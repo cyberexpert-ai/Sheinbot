@@ -16,7 +16,7 @@ const { handleRecoveryResponseInput, handleRecoveryRejectInput } = require('../c
 
 // Reply keyboard button mapping
 const MENU_MAP = {
-  '🛒 Buy Voucher':        async (ctx) => { const { showCategories } = require('../commands/user/buyVoucher'); return showCategories(ctx); },
+  '🛍 Buy Vouchers':       async (ctx) => { const { showCategories } = require('../commands/user/buyVoucher'); return showCategories(ctx); },
   '🔁 Recover Vouchers':  async (ctx) => { const { showRecoverPage } = require('../commands/user/recoverVoucher'); return showRecoverPage(ctx); },
   '📦 My Orders':         async (ctx) => { const { showMyOrders } = require('../commands/user/myOrders'); return showMyOrders(ctx); },
   '🆘 Support':           async (ctx) => { const { showSupport } = require('../commands/user/support'); return showSupport(ctx); },
