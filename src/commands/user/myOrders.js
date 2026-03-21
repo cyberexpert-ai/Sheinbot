@@ -6,11 +6,14 @@ async function showMyOrders(ctx) {
   const sess = await db.getSession(userId);
   if (sess.data.lastMsgId) await safeDelete(ctx, ctx.chat.id, sess.data.lastMsgId);
 
-  const orders = await db.getOrdersByUser(userId);
+  // Hide keyboard
+  const tmp = await ctx.reply('...', { reply_markup: { remove_keyboard: true } });
+  await safeDelete(ctx, ctx.chat.id, tmp.message_id);
 
+  const orders = await db.getOrdersByUser(userId);
   if (!orders.length) {
     const msg = await ctx.reply(
-      `📦 *My Orders*\n\n📭 You don't have any orders yet.\n\nTap *Buy Voucher* to get started!`,
+      `📦 *My Orders*\n\n📭 You don't have any orders yet.\n\nTap *Buy Vouchers* to get started!`,
       { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 Main Menu', callback_data: 'cb_main' }]] } }
     );
     await db.setSession(userId, 'IDLE', { lastMsgId: msg.message_id });
@@ -50,9 +53,7 @@ async function showOrderDetail(ctx, orderId) {
 
   if (order.status === 'ACCEPTED') {
     const vouchers = await db.getOrderVouchers(orderId);
-    if (vouchers.length) {
-      text += `\n\n🎟 *Your Voucher Codes:*\n${vouchers.map(v => `\`${v.voucher_code}\``).join('\n')}`;
-    }
+    if (vouchers.length) text += `\n\n🎟 *Your Voucher Codes:*\n${vouchers.map(v => `\`${v.voucher_code}\``).join('\n')}`;
   } else if (order.status === 'REJECTED') {
     text += `\n\n❌ *Reason:* ${order.reject_reason || 'Not specified'}`;
   } else if (order.status === 'PENDING') {
