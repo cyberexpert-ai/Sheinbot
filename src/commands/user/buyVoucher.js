@@ -1,7 +1,11 @@
 const db = require('../../database/database');
+const { Markup } = require('telegraf');
 const { STATES, QR_IMAGE, ADMIN_ID, ILLEGAL_PATTERNS } = require('../../utils/constants');
 const { generateOrderId, formatPrice, formatDate, safeDelete, deleteUserMsg } = require('../../utils/helpers');
 const logger = require('../../utils/logger');
+
+// Hides the reply keyboard
+const hideKb = Markup.removeKeyboard();
 
 async function showCategories(ctx) {
   const userId = ctx.from.id;
@@ -10,8 +14,9 @@ async function showCategories(ctx) {
 
   const categories = await db.getCategories(true);
   if (!categories.length) {
-    const msg = await ctx.reply('❌ *No voucher categories available right now.*\n\nPlease check back later.', {
+    const msg = await ctx.reply('❌ *No voucher categories available.*\n\nPlease check back later.', {
       parse_mode: 'Markdown',
+      ...hideKb,
       reply_markup: { inline_keyboard: [[{ text: '🔙 Main Menu', callback_data: 'cb_main' }]] }
     });
     await db.setSession(userId, 'IDLE', { lastMsgId: msg.message_id });
@@ -28,11 +33,18 @@ async function showCategories(ctx) {
   }
   buttons.push([{ text: '🔙 Main Menu', callback_data: 'cb_main' }]);
 
+  // Send with remove_keyboard to hide the reply keyboard
   const msg = await ctx.reply('🛒 *Buy Voucher*\n\n📂 Select a category:', {
+    parse_mode: 'Markdown',
+    reply_markup: { remove_keyboard: true }
+  });
+  // Delete that and send with inline
+  await safeDelete(ctx, ctx.chat.id, msg.message_id);
+  const msg2 = await ctx.reply('🛒 *Buy Voucher*\n\n📂 Select a category:', {
     parse_mode: 'Markdown',
     reply_markup: { inline_keyboard: buttons }
   });
-  await db.setSession(userId, STATES.BUY_SELECT_CATEGORY, { lastMsgId: msg.message_id });
+  await db.setSession(userId, STATES.BUY_SELECT_CATEGORY, { lastMsgId: msg2.message_id });
 }
 
 async function showQuantitySelection(ctx, categoryId) {
@@ -122,12 +134,10 @@ async function showPaymentPage(ctx, categoryId, quantity, totalPrice) {
 async function askForScreenshot(ctx, categoryId, quantity, totalPrice) {
   const userId = ctx.from.id;
   const sess = await db.getSession(userId);
-
-  // Payment page is a PHOTO — must delete then send new message, cannot editMessageText
   if (sess.data.lastMsgId) await safeDelete(ctx, ctx.chat.id, sess.data.lastMsgId);
 
   const msg = await ctx.reply(
-    `📸 *Upload Payment Screenshot*\n\n🎟 *Category:* ${sess.data.categoryName || ''}\n💰 *Amount:* ${formatPrice(totalPrice)}\n\nSend your payment screenshot photo now.\n\n⚠️ *Warning:* Fake screenshots = *permanent ban & legal action*`,
+    `📸 *Upload Payment Screenshot*\n\n🎟 *Category:* ${sess.data.categoryName || ''}\n💰 *Amount:* ${formatPrice(totalPrice)}\n\nSend your payment screenshot photo now.\n\n⚠️ Fake screenshots = *permanent ban*`,
     {
       parse_mode: 'Markdown',
       reply_markup: { inline_keyboard: [[{ text: '🔙 Back', callback_data: `bc${categoryId}` }]] }
@@ -152,7 +162,6 @@ async function handleScreenshotReceived(ctx) {
   if (sess.data.lastMsgId) await safeDelete(ctx, ctx.chat.id, sess.data.lastMsgId);
 
   const { categoryId, quantity, totalPrice, categoryName } = sess.data;
-
   const msg = await ctx.reply(
     `🔢 *Enter UTR / Transaction Reference ID*\n\n🎟 *Category:* ${categoryName}\n💰 *Amount:* ${formatPrice(totalPrice)}\n\nSend your 12-digit UTR number.\n\n⚠️ Fake or duplicate UTR = *immediate ban*`,
     {
@@ -182,7 +191,7 @@ async function handleUTRReceived(ctx) {
       if (sess.data.lastMsgId) await safeDelete(ctx, ctx.chat.id, sess.data.lastMsgId);
       await db.tempBlockUser(userId, 'Suspicious UTR detected', 20);
       await db.clearSession(userId);
-      await ctx.reply('🚫 Suspicious activity detected. Restricted for 20 minutes.');
+      await ctx.reply('🚫 Suspicious activity. Restricted for 20 minutes.');
       return;
     }
   }
@@ -198,7 +207,6 @@ async function handleUTRReceived(ctx) {
   }
 
   await deleteUserMsg(ctx);
-
   const { categoryId, categoryName, quantity, totalPrice, screenshotFileId } = sess.data;
 
   const stock = await db.getCategoryStock(categoryId);
@@ -219,16 +227,16 @@ async function handleUTRReceived(ctx) {
 
   if (sess.data.lastMsgId) await safeDelete(ctx, ctx.chat.id, sess.data.lastMsgId);
 
+  const { getReplyKeyboard } = require('./index');
   const msg = await ctx.reply(
-    `✅ *Order Submitted Successfully!*\n\n━━━━━━━━━━━━━━━━━\n🧾 *Order ID:* \`${orderId}\`\n🎟 *Category:* ${categoryName}\n📦 *Quantity:* ${quantity}\n💰 *Amount:* ${formatPrice(totalPrice)}\n📅 *Date:* ${formatDate(new Date())}\n━━━━━━━━━━━━━━━━━\n\n⏳ Admin is verifying your payment.\n🔁 Recovery window: *2 hours only*`,
-    { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🏠 Main Menu', callback_data: 'cb_main' }]] } }
+    `✅ *Order Submitted!*\n\n━━━━━━━━━━━━━━━━━\n🧾 *Order ID:* \`${orderId}\`\n🎟 *Category:* ${categoryName}\n📦 *Quantity:* ${quantity}\n💰 *Amount:* ${formatPrice(totalPrice)}\n📅 *Date:* ${formatDate(new Date())}\n━━━━━━━━━━━━━━━━━\n\n⏳ Admin verifying your payment.\n🔁 Recovery window: *2 hours only*`,
+    { parse_mode: 'Markdown', ...getReplyKeyboard() }
   );
   await db.setSession(userId, 'IDLE', { lastMsgId: msg.message_id });
 
-  // BharatPay: if enabled do NOT notify admin manually
+  // BharatPay check
   const bharatRes = await db.query("SELECT value FROM settings WHERE key='bharatpay_enabled'");
   const autoVerify = bharatRes.rows[0]?.value === 'true';
-
   if (autoVerify) {
     await verifyWithBharatPay(ctx, orderId, utr, userId, categoryId, categoryName, quantity, totalPrice, screenshotFileId);
   } else {
@@ -241,7 +249,7 @@ async function notifyAdmin(ctx, { orderId, userId, categoryName, quantity, total
     const user = await db.getUser(userId);
     const userName = user?.username ? `@${user.username}` : (user?.first_name || 'Unknown');
     const adminMsg = await ctx.telegram.sendPhoto(ADMIN_ID, screenshotFileId, {
-      caption: `🆕 *New Order*\n\n━━━━━━━━━━━━━━━━━\n🧾 *ID:* \`${orderId}\`\n👤 *User:* ${userName} (\`${userId}\`)\n🎟 *Category:* ${categoryName}\n📦 *Qty:* ${quantity}\n💰 *Amount:* ${formatPrice(totalPrice)}\n🔑 *UTR:* \`${utr}\`\n━━━━━━━━━━━━━━━━━`,
+      caption: `🆕 *New Order*\n\n━━━━━━━━━━━━━━━━━\n🧾 \`${orderId}\`\n👤 ${userName} (\`${userId}\`)\n🎟 ${categoryName}\n📦 Qty: ${quantity}\n💰 ${formatPrice(totalPrice)}\n🔑 UTR: \`${utr}\`\n━━━━━━━━━━━━━━━━━`,
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
@@ -251,9 +259,7 @@ async function notifyAdmin(ctx, { orderId, userId, categoryName, quantity, total
       }
     });
     await db.setOrderAdminMsgId(orderId, adminMsg.message_id);
-  } catch (err) {
-    logger.error('Admin notify failed: ' + err.message);
-  }
+  } catch (err) { logger.error('Admin notify failed: ' + err.message); }
 }
 
 async function verifyWithBharatPay(ctx, orderId, utr, userId, categoryId, categoryName, quantity, totalPrice, screenshotFileId) {
@@ -261,7 +267,6 @@ async function verifyWithBharatPay(ctx, orderId, utr, userId, categoryId, catego
     const merchantId = process.env.BHARATPAY_MERCHANT_ID;
     const apiKey = process.env.BHARATPAY_API_KEY;
     if (!merchantId || !apiKey) {
-      logger.warn('BharatPay enabled but credentials missing — switching to manual');
       await notifyAdmin(ctx, { orderId, userId, categoryName, quantity, totalPrice, screenshotFileId, utr });
       return;
     }
@@ -274,7 +279,6 @@ async function verifyWithBharatPay(ctx, orderId, utr, userId, categoryId, catego
       const { handleAdminAcceptOrder } = require('../admin/orderManage');
       await handleAdminAcceptOrder(ctx, orderId, true);
     } else {
-      // Verification failed → manual
       await notifyAdmin(ctx, { orderId, userId, categoryName, quantity, totalPrice, screenshotFileId, utr });
     }
   } catch (err) {
