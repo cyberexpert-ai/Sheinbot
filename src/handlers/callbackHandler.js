@@ -46,7 +46,7 @@ async function handleCallback(ctx) {
     return showMainMenu(ctx);
   }
 
-  // Channel re-check every action for non-admin
+  // Channel re-check for non-admin
   if (!isAdmin) {
     const user = await db.getUser(userId);
     if (user?.is_verified) {
@@ -60,14 +60,14 @@ async function handleCallback(ctx) {
     }
   }
 
-  // ── USER: MAIN MENU ────────────────────────────────────────────
+  // ── MAIN MENU ──────────────────────────────────────────────────
   if (data === 'cb_main') {
     try { await ctx.deleteMessage(); } catch (e) {}
     await db.clearSession(userId);
     return showMainMenu(ctx);
   }
 
-  // ── USER: MENU ITEMS ───────────────────────────────────────────
+  // ── USER MENU SHORTCUTS ────────────────────────────────────────
   if (data === 'cb_buy') { try { await ctx.deleteMessage(); } catch (e) {} await db.clearSession(userId); return showCategories(ctx); }
   if (data === 'cb_recover') { try { await ctx.deleteMessage(); } catch (e) {} await db.clearSession(userId); return showRecoverPage(ctx); }
   if (data === 'cb_orders') { try { await ctx.deleteMessage(); } catch (e) {} await db.clearSession(userId); return showMyOrders(ctx); }
@@ -76,35 +76,28 @@ async function handleCallback(ctx) {
 
   if (data === 'nostock') { await ctx.answerCbQuery('😔 Out of stock! Check back later.', { show_alert: true }); return; }
 
-  // ── BUY FLOW ──────────────────────────────────────────────────
-  // bc{catId} = buy category
-  if (data.startsWith('bc') && !data.startsWith('bcustom')) {
-    const catId = parseInt(data.replace('bc', ''));
-    if (!isNaN(catId)) {
-      try { await ctx.deleteMessage(); } catch (e) {}
-      return showQuantitySelection(ctx, catId);
-    }
-  }
-  // bcustom_{catId}
+  // ── BUY FLOW ───────────────────────────────────────────────────
   if (data.startsWith('bcustom_')) {
     const catId = parseInt(data.replace('bcustom_', ''));
     try { await ctx.deleteMessage(); } catch (e) {}
     return promptCustomQuantity(ctx, catId);
   }
-  // bq_{catId}_{qty}_{price}
+  if (data.startsWith('bc') && /^bc\d+$/.test(data)) {
+    const catId = parseInt(data.replace('bc', ''));
+    try { await ctx.deleteMessage(); } catch (e) {}
+    return showQuantitySelection(ctx, catId);
+  }
   if (data.startsWith('bq_')) {
     const parts = data.replace('bq_', '').split('_');
     const catId = parseInt(parts[0]), qty = parseInt(parts[1]), price = parseInt(parts[2]);
     try { await ctx.deleteMessage(); } catch (e) {}
     return showPaymentPage(ctx, catId, qty, price);
   }
-  // bpaid_{catId}_{qty}_{price}
   if (data.startsWith('bpaid_')) {
     const parts = data.replace('bpaid_', '').split('_');
     const catId = parseInt(parts[0]), qty = parseInt(parts[1]), price = parseInt(parts[2]);
     return askForScreenshot(ctx, catId, qty, price);
   }
-  // vord_{orderId}
   if (data.startsWith('vord_')) return showOrderDetail(ctx, data.replace('vord_', ''));
 
   // ── ADMIN ONLY ─────────────────────────────────────────────────
@@ -121,6 +114,7 @@ async function handleCallback(ctx) {
   if (data === 'admin_stats') return showStats(ctx);
   if (data === 'admin_security') return showSecurityPanel(ctx);
   if (data === 'admin_settings') return showAdminSettings(ctx);
+  if (data === 'admin_user_search') return promptSearchUser(ctx);
 
   // Categories
   if (data === 'admin_cat_add') return promptAddCategory(ctx);
@@ -157,7 +151,6 @@ async function handleCallback(ctx) {
   if (data.startsWith('afd_')) return handleForceDeliver(ctx, data.replace('afd_', ''));
 
   // Users
-  if (data === 'admin_user_search') return promptSearchUser(ctx);
   if (data.startsWith('aul_')) return showUserList(ctx, parseInt(data.replace('aul_', '')));
   if (data.startsWith('avu_')) return showUserProfile(ctx, parseInt(data.replace('avu_', '')), true);
   if (data.startsWith('abp_')) return promptBlockUser(ctx, parseInt(data.replace('abp_', '')));
@@ -165,26 +158,23 @@ async function handleCallback(ctx) {
   if (data.startsWith('atb_')) return promptTempBlock(ctx, parseInt(data.replace('atb_', '')));
   if (data.startsWith('arv_')) return handleResetVerification(ctx, parseInt(data.replace('arv_', '')));
   if (data.startsWith('auo_')) return showUserOrders(ctx, parseInt(data.replace('auo_', '')));
-
-  // Block from support chat
   if (data.startsWith('absup_')) return promptBlockUser(ctx, parseInt(data.replace('absup_', '')));
-  // Reply to user from support
+
+  // Broadcast — ab_all, ab_photo, ab_user, ab_delmenu, ab_del_ID
+  if (data === 'ab_all') return promptBroadcast(ctx, false);
+  if (data === 'ab_photo') return promptBroadcast(ctx, true);
+  if (data === 'ab_user') return promptMessageUser(ctx);
+  if (data === 'ab_delmenu') return showDeleteBroadcastMenu(ctx);
+  if (data.startsWith('ab_del_')) return handleDeleteBroadcast(ctx, parseInt(data.replace('ab_del_', '')));
   if (data.startsWith('amu_')) return promptMessageUser(ctx, parseInt(data.replace('amu_', '')));
 
-  // Broadcast
-  if (data === 'admin_broadcast_all') return promptBroadcast(ctx, false);
-  if (data === 'admin_broadcast_photo') return promptBroadcast(ctx, true);
-  if (data === 'admin_msg_user_prompt') return promptMessageUser(ctx);
-  if (data === 'admin_broadcast_del_menu') return showDeleteBroadcastMenu(ctx);
-  if (data.startsWith('abdel_')) return handleDeleteBroadcast(ctx, parseInt(data.replace('abdel_', '')));
-
-  // Discounts — adc=create, add=delete menu, adt=toggle menu, adel_ID=delete, atog_ID_val=toggle
-  if (data === 'adc') return promptCreateDiscount(ctx);
-  if (data === 'add') return showDeleteDiscountMenu(ctx);
-  if (data === 'adt') return showToggleDiscountMenu(ctx);
-  if (data.startsWith('adel_')) return handleDeleteDiscount(ctx, parseInt(data.replace('adel_', '')));
-  if (data.startsWith('atog_')) {
-    const parts = data.replace('atog_', '').split('_');
+  // Discounts — disc_create, disc_delmenu, disc_togmenu, disc_del_ID, disc_tog_ID_VAL
+  if (data === 'disc_create') return promptCreateDiscount(ctx);
+  if (data === 'disc_delmenu') return showDeleteDiscountMenu(ctx);
+  if (data === 'disc_togmenu') return showToggleDiscountMenu(ctx);
+  if (data.startsWith('disc_del_')) return handleDeleteDiscount(ctx, parseInt(data.replace('disc_del_', '')));
+  if (data.startsWith('disc_tog_')) {
+    const parts = data.replace('disc_tog_', '').split('_');
     return handleToggleDiscount(ctx, parseInt(parts[0]), parts[1]);
   }
 
@@ -194,7 +184,7 @@ async function handleCallback(ctx) {
   if (data === 'admin_check_utrs') return showDuplicateUTRs(ctx);
   if (data === 'admin_expire_rec') return handleExpireOldRecoveries(ctx);
 
-  // Recovery admin responses — ars_ORDER_USER, arr_ORDER_USER
+  // Recovery admin — ars_ORDER_USER, arr_ORDER_USER
   if (data.startsWith('ars_')) {
     const rest = data.replace('ars_', '');
     const li = rest.lastIndexOf('_');
