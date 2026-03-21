@@ -4,9 +4,9 @@ const { safeDelete } = require('../../utils/helpers');
 
 function getReplyKeyboard() {
   return Markup.keyboard([
-    ['🛒 Buy Voucher'],
-    ['🔁 Recover Vouchers', '📦 My Orders'],
-    ['🆘 Support', '📜 Disclaimer']
+    ['🛍 Buy Vouchers', '📦 My Orders'],
+    ['🔁 Recover Vouchers', '🆘 Support'],
+    ['📜 Disclaimer']
   ]).resize().persistent();
 }
 
