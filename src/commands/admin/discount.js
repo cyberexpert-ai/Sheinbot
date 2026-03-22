@@ -6,7 +6,7 @@ async function showDiscountMenu(ctx) {
   let text = `🏷 *Discount Codes* (${codes.length} total)\n\n`;
   if (codes.length) {
     text += codes.slice(0, 8).map(c =>
-      `• \`${c.code}\` — ${c.discount_type === 'PERCENT' ? `${c.discount_value}%` : `₹${c.discount_value}`} | ${c.used_count}/${c.max_uses || '∞'} | ${c.is_active ? '✅' : '❌'}`
+      `• \`${c.code}\` — ${c.discount_type === 'PERCENT' ? `${c.discount_value}%` : `₹${c.discount_value}`} | ${c.used_count}/${c.max_uses || '∞'} uses | ${c.is_active ? '✅' : '❌'}`
     ).join('\n');
   } else {
     text += '_No discount codes yet._';
@@ -31,7 +31,7 @@ async function showDiscountMenu(ctx) {
 }
 
 async function promptCreateDiscount(ctx) {
-  const text = `➕ *Create Discount Code*\n\nSend in this format:\n\`CODE TYPE VALUE MIN_QTY MAX_USES\`\n\n*Examples:*\n\`SAVE10 PERCENT 10 1 100\` → 10% off\n\`FLAT50 FLAT 50 2 0\` → ₹50 off, unlimited\n\n_TYPE = PERCENT or FLAT_\n_MAX\\_USES = 0 for unlimited_`;
+  const text = `➕ *Create Discount Code*\n\nSend in this format:\n\`CODE TYPE VALUE MIN_QTY MAX_USES\`\n\n*Examples:*\n\`SAVE10 PERCENT 10 1 100\` → 10% off, min 1, max 100 uses\n\`FLAT50 FLAT 50 2 0\` → ₹50 off, min 2, unlimited\n\n_TYPE = PERCENT or FLAT | MAX\\_USES = 0 for unlimited_`;
   const opts = {
     parse_mode: 'Markdown',
     reply_markup: { inline_keyboard: [[{ text: '↩️ Back', callback_data: 'admin_discounts' }]] }
@@ -52,6 +52,7 @@ async function handleCreateDiscountInput(ctx) {
   try { await ctx.deleteMessage(); } catch (e) {}
 
   const fail = async (errText) => {
+    try { await ctx.telegram.deleteMessage(ctx.chat.id, sess.data.lastMsgId); } catch (e) {}
     const msg = await ctx.reply(errText, {
       parse_mode: 'Markdown',
       reply_markup: { inline_keyboard: [[{ text: '↩️ Back', callback_data: 'admin_discounts' }]] }
@@ -65,22 +66,17 @@ async function handleCreateDiscountInput(ctx) {
 
   const [code, type, value, minQty, maxUses] = parts;
   if (!['PERCENT', 'FLAT'].includes(type.toUpperCase())) return fail('⚠️ TYPE must be `PERCENT` or `FLAT`');
-
   const numVal = parseFloat(value), numMin = parseInt(minQty), numMax = parseInt(maxUses);
   if (isNaN(numVal) || isNaN(numMin) || isNaN(numMax)) return fail('⚠️ VALUE, MIN\\_QTY, MAX\\_USES must be numbers');
   if (type.toUpperCase() === 'PERCENT' && (numVal <= 0 || numVal > 100)) return fail('⚠️ PERCENT must be 1–100');
 
-  const created = await db.createDiscountCode(
-    code.toUpperCase(), type.toUpperCase(), numVal, null,
-    numMin, numMax === 0 ? null : numMax, null
-  );
-
+  const created = await db.createDiscountCode(code.toUpperCase(), type.toUpperCase(), numVal, null, numMin, numMax === 0 ? null : numMax, null);
   try { await ctx.telegram.deleteMessage(ctx.chat.id, sess.data.lastMsgId); } catch (e) {}
   await db.clearSession(ADMIN_ID);
 
   const msg = await ctx.reply(
     `✅ *Code Created!*\n\n🏷 \`${created.code}\`\n💰 ${type.toUpperCase() === 'PERCENT' ? `${numVal}% off` : `₹${numVal} off`}\n📦 Min Qty: ${numMin}\n🔢 Max Uses: ${numMax === 0 ? '∞ Unlimited' : numMax}`,
-    { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '↩️ Back', callback_data: 'admin_discounts' }]] } }
+    { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '↩️ Back to Discounts', callback_data: 'admin_discounts' }]] } }
   );
   await db.setSession(ADMIN_ID, 'IDLE', { lastMsgId: msg.message_id });
 }
@@ -88,13 +84,8 @@ async function handleCreateDiscountInput(ctx) {
 async function showDeleteDiscountMenu(ctx) {
   const codes = await db.getAllDiscountCodes();
   if (!codes.length) { await ctx.answerCbQuery('No codes to delete.', { show_alert: true }); return; }
-
-  const buttons = codes.map(c => [{
-    text: `🗑 ${c.code} (${c.is_active ? '✅ Active' : '❌ Inactive'})`,
-    callback_data: `disc_del_${c.id}`
-  }]);
+  const buttons = codes.map(c => [{ text: `🗑 ${c.code} (${c.is_active ? '✅' : '❌'})`, callback_data: `disc_del_${c.id}` }]);
   buttons.push([{ text: '↩️ Back', callback_data: 'admin_discounts' }]);
-
   const opts = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: buttons } };
   if (ctx.callbackQuery) {
     try { return await ctx.editMessageText('🗑 *Select code to delete:*', opts); } catch (e) {}
@@ -113,13 +104,11 @@ async function handleDeleteDiscount(ctx, id) {
 async function showToggleDiscountMenu(ctx) {
   const codes = await db.getAllDiscountCodes();
   if (!codes.length) { await ctx.answerCbQuery('No codes found.', { show_alert: true }); return; }
-
   const buttons = codes.map(c => [{
     text: `${c.is_active ? '🔴 Disable' : '🟢 Enable'} — ${c.code}`,
     callback_data: `disc_tog_${c.id}_${c.is_active ? '0' : '1'}`
   }]);
   buttons.push([{ text: '↩️ Back', callback_data: 'admin_discounts' }]);
-
   const opts = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: buttons } };
   if (ctx.callbackQuery) {
     try { return await ctx.editMessageText('🔄 *Toggle Discount Codes:*', opts); } catch (e) {}
