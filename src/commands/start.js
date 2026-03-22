@@ -26,15 +26,11 @@ async function handleStart(ctx) {
   const user = await db.getUser(userId);
   if (!user?.is_verified) {
     await db.setUserVerified(userId, true);
-    let msg;
-    try {
-      msg = await ctx.replyWithPhoto(
-        { url: 'https://i.supaimg.com/00332ad4-8aa7-408f-8705-55dbc91ea737.jpg' },
-        { caption: `🎯 *Welcome to ${BOT_NAME}!*\n\n🚀 Get exclusive Shein vouchers at the best prices!\n\n📌 Use the menu buttons below:`, parse_mode: 'Markdown', ...getReplyKeyboard() }
-      );
-    } catch (e) {
-      msg = await ctx.reply(`🎯 *Welcome to ${BOT_NAME}!*\n\n🚀 Get exclusive Shein vouchers!\n\n📌 Use the menu below:`, { parse_mode: 'Markdown', ...getReplyKeyboard() });
-    }
+    // Welcome message — text only, no photo
+    const msg = await ctx.reply(
+      `🎯 *Welcome to ${BOT_NAME}!*\n\n🛒 Get exclusive BigBasket vouchers at the best prices!\n\n📌 Use the menu buttons below:`,
+      { parse_mode: 'Markdown', ...getReplyKeyboard() }
+    );
     await db.setSession(userId, 'IDLE', { lastMsgId: msg.message_id });
   } else {
     await showMainMenu(ctx);
