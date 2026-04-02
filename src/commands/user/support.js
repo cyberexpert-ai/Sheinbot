@@ -58,7 +58,7 @@ async function handleSupportMessage(ctx) {
 
   if (sess.data.lastMsgId) await safeDelete(ctx, ctx.chat.id, sess.data.lastMsgId);
   const msg = await ctx.reply(
-    `✅ *Support message sent!*\n\nWe'll respond shortly.\n\n🤖 Also reach: @SheinSupportRobot`,
+    `✅ *Support message sent!*\n\nWe'll respond shortly.\n\n🙏 Thank you for your patience!`,
     { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔙 Leave', callback_data: 'cb_main' }]] } }
   );
   await db.setSession(userId, 'IDLE', { lastMsgId: msg.message_id });
