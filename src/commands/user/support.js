@@ -60,7 +60,7 @@ async function handleSupportMessage(ctx) {
   if (sess.data.lastMsgId) await safeDelete(ctx, ctx.chat.id, sess.data.lastMsgId);
   const { getReplyKeyboard } = require('./index');
   const msg = await ctx.reply(
-    `✅ *Support message sent!*\n\nWe'll respond shortly.\n\n🤖 Also reach: @SheinSupportRobot`,
+    `✅ *Support message sent!*\n\nWe'll respond shortly.\n\n🙏 Thank you for your patience!`,
     { parse_mode: 'Markdown', ...getReplyKeyboard() }
   );
   await db.setSession(userId, 'IDLE', { lastMsgId: msg.message_id });
